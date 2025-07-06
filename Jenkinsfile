@@ -2,14 +2,13 @@ pipeline {
     agent any
 
     tools {
-        nodejs 'NodeJS-18' // Uses Node.js installed via Jenkins Global Tool Configuration
+        nodejs 'NodeJS-18' // Ensure this is configured in Jenkins Global Tool Configuration
     }
 
     environment {
-        AWS_REGION = 'us-east-1' // AWS region
-        SNYK_TOKEN = credentials('SNYK_TOKEN') // Securely retrieves Snyk token from Jenkins credentials
-        SNYK_ORG = '67615456-3e82-4935-9968-23e1de24cd66' // Organization ID
-        SNYK_PROJECT = 'snyk-jenkins-test' // Project name
+        AWS_REGION = 'us-east-1'
+        SNYK_ORG = '67615456-3e82-4935-9968-23e1de24cd66'
+        SNYK_PROJECT = 'snyk-jenkins-test'
     }
 
     stages {
@@ -17,7 +16,7 @@ pipeline {
             steps {
                 withCredentials([[
                     $class: 'AmazonWebServicesCredentialsBinding',
-                    credentialsId: 'snyk_cred', // Ensure this is an AWS credential
+                    credentialsId: 'snyk_cred',
                     accessKeyVariable: 'AWS_ACCESS_KEY_ID',
                     secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
                 ]]) {
@@ -46,24 +45,20 @@ pipeline {
 
         stage('Install Snyk') {
             steps {
-                script {
-                    echo "Installing Snyk..."
-                    sh 'npm install -g snyk snyk-to-sarif'
-                    sh 'snyk --version'
-                }
+                sh '''
+                npm install -g snyk snyk-to-sarif
+                snyk --version
+                '''
             }
         }
 
         stage('Update Dependencies') {
             steps {
-                script {
-                    echo "Checking for outdated npm packages..."
-                    sh '''
-                    npm install -g npm-check-updates
-                    ncu -u
-                    npm install
-                    '''
-                }
+                sh '''
+                npm install -g npm-check-updates
+                ncu -u
+                npm install
+                '''
             }
         }
 
@@ -83,18 +78,13 @@ pipeline {
 
         stage('Snyk Scan & Publish to Snyk.io') {
             steps {
-                script {
-                    echo "Authenticating with Snyk..."
-                    sh 'snyk auth $SNYK_TOKEN'
-
-                    echo "Running Snyk security scan on all project files..."
-                    sh 'snyk test --all-projects --json > snyk.json || echo "Snyk scan encountered issues, but pipeline continues."'
-
-                    echo "Converting Snyk JSON report to SARIF format..."
-                    sh 'snyk-to-sarif < snyk.json > snyk.sarif'
-
-                    echo "Publishing project to Snyk.io..."
-                    sh 'snyk monitor --org=$SNYK_ORG --project-name=$SNYK_PROJECT'
+                withCredentials([string(credentialsId: 'SNYK_TOKEN', variable: 'SNYK_TOKEN')]) {
+                    sh '''
+                    snyk auth $SNYK_TOKEN
+                    snyk test --all-projects --json > snyk.json || echo "Snyk scan encountered issues, but pipeline continues."
+                    snyk-to-sarif < snyk.json > snyk.sarif
+                    snyk monitor --org=$SNYK_ORG --project-name=$SNYK_PROJECT
+                    '''
                 }
             }
         }
